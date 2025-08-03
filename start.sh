@@ -3,19 +3,39 @@ set -e
 
 echo "=== 审计告警系统启动 ==="
 
-# 等待外部数据库连接
+# 等待外部数据库连接（使用Python替代nc命令）
 echo "等待数据库连接 ${DB_HOST}:${DB_PORT}..."
 timeout=60
 counter=0
-while ! nc -z ${DB_HOST} ${DB_PORT}; do
-  sleep 1
-  counter=$((counter + 1))
-  if [ $counter -gt $timeout ]; then
-    echo "❌ 数据库连接超时"
-    exit 1
-  fi
+
+while [ $counter -lt $timeout ]; do
+    # 使用Python检测端口连接
+    if python3 -c "
+import socket
+import sys
+try:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1)
+    result = sock.connect_ex(('${DB_HOST}', ${DB_PORT}))
+    sock.close()
+    if result == 0:
+        sys.exit(0)
+    else:
+        sys.exit(1)
+except:
+    sys.exit(1)
+" 2>/dev/null; then
+        echo "✅ 数据库连接成功"
+        break
+    fi
+    
+    sleep 1
+    counter=$((counter + 1))
+    if [ $counter -eq $timeout ]; then
+        echo "❌ 数据库连接超时"
+        exit 1
+    fi
 done
-echo "✅ 数据库连接成功"
 
 # 测试数据库连接
 echo "测试数据库连接..."
