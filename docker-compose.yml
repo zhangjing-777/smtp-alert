@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  audit-alert:
+    container_name: smtp-alert
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8207:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs  # 日志文件映射到宿主机
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
