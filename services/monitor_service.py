@@ -72,7 +72,7 @@ class MonitorService:
             AND esl.record_id = ar.id 
             AND esl.verdict = ar.verdict
         )
-        WHERE ar.verdict IN ('不合格', '不确定') 
+        WHERE ar.verdict IN ('不合格') 
         AND esl.id IS NULL
         ORDER BY ar.created_at DESC
         """
@@ -101,7 +101,7 @@ class MonitorService:
         """检查image_audit_results表"""
         if not self.is_monitor_enabled():
             return
-            
+        # or WHERE iar.audit_result IN ('不合格', '不确定')    
         query = """
         SELECT iar.id, iar.audit_result, iar.created_at, iar.ip_address, iar.mac_address, iar.reasons
         FROM image_audit_results iar
@@ -110,7 +110,7 @@ class MonitorService:
             AND esl.record_id = iar.id 
             AND esl.verdict = iar.audit_result
         )
-        WHERE iar.audit_result IN ('不合格', '不确定') 
+        WHERE iar.audit_result IN ('不合格') 
         AND esl.id IS NULL
         ORDER BY iar.created_at DESC
         """
