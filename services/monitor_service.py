@@ -63,7 +63,7 @@ class MonitorService:
         """检查audit_results表"""
         if not self.is_monitor_enabled():
             return
-        
+            
         query = """
         SELECT ar.id, ar.verdict, ar.created_at, ar.url, ar.reason
         FROM audit_results ar
@@ -90,14 +90,17 @@ class MonitorService:
             email_service = EmailService(self.smtp_config)
             
             for record in records:
-                if email_service.send_audit_alert(record, recipients):
-                    self._log_sent_email('audit_results', record[0], record[1], recipients)
+                # 确保传递正确的字段值
+                record_data = (record['id'], record['verdict'], record['created_at'], 
+                            record['url'], record['reason'])
+                if email_service.send_audit_alert(record_data, recipients):
+                    self._log_sent_email('audit_results', record['id'], record['verdict'], recipients)
     
     def check_image_audit_results(self):
         """检查image_audit_results表"""
         if not self.is_monitor_enabled():
             return
-        
+            
         query = """
         SELECT iar.id, iar.audit_result, iar.created_at, iar.ip_address, iar.mac_address, iar.reasons
         FROM image_audit_results iar
@@ -124,8 +127,11 @@ class MonitorService:
             email_service = EmailService(self.smtp_config)
             
             for record in records:
-                if email_service.send_image_alert(record, recipients):
-                    self._log_sent_email('image_audit_results', record[0], record[1], recipients)
+                # 确保传递正确的字段值
+                record_data = (record['id'], record['audit_result'], record['created_at'], 
+                            record['ip_address'], record['mac_address'], record['reasons'])
+                if email_service.send_image_alert(record_data, recipients):
+                    self._log_sent_email('image_audit_results', record['id'], record['audit_result'], recipients)
     
     def _log_sent_email(self, table_name, record_id, verdict, recipients):
         """记录已发送的邮件"""
