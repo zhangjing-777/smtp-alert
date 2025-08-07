@@ -91,6 +91,7 @@ class MonitorService:
             
             for record in records:
                 # 确保传递正确的字段值
+                logger.info(f"the record format is {record}, type is {type(record)}")
                 record_data = (record['id'], record['verdict'], record['created_at'], 
                             record['url'], record['reason'])
                 if email_service.send_audit_alert(record_data, recipients):
@@ -128,6 +129,7 @@ class MonitorService:
             
             for record in records:
                 # 确保传递正确的字段值
+                logger.info(f"the record format is {record}, type is {type(record)}")
                 record_data = (record['id'], record['audit_result'], record['created_at'], 
                             record['ip_address'], record['mac_address'], record['reasons'])
                 if email_service.send_image_alert(record_data, recipients):
