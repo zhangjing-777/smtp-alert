@@ -85,27 +85,43 @@ class EmailService:
         return self._send_email(subject, html_content, recipients)
     
     def _send_email(self, subject, content, recipients):
-        """发送邮件"""
+        """发送邮件 - 增强错误处理"""
         if not recipients:
             logger.warning("没有配置收件人")
             return False
         
         try:
+            logger.info(f"准备发送邮件: {subject}")
+            logger.info(f"SMTP服务器: {self.smtp_config['server']}:{self.smtp_config['port']}")
+            
             msg = MIMEMultipart()
             msg['From'] = self.smtp_config['username']
             msg['To'] = ', '.join(recipients)
             msg['Subject'] = Header(subject, 'utf-8')
-            
             msg.attach(MIMEText(content, 'html', 'utf-8'))
             
-            with smtplib.SMTP(self.smtp_config['server'], self.smtp_config['port']) as server:
+            # 根据端口选择连接方式
+            if self.smtp_config['port'] == 465:
+                # SSL 连接
+                server = smtplib.SMTP_SSL(self.smtp_config['server'], self.smtp_config['port'])
+            else:
+                # TLS 连接
+                server = smtplib.SMTP(self.smtp_config['server'], self.smtp_config['port'])
                 server.starttls()
-                server.login(self.smtp_config['username'], self.smtp_config['password'])
-                server.send_message(msg)
+            
+            server.login(self.smtp_config['username'], self.smtp_config['password'])
+            server.send_message(msg)
+            server.quit()
             
             logger.info(f"邮件发送成功: {subject}")
             return True
             
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"SMTP认证失败: {e} - 请检查用户名和密码")
+            return False
+        except smtplib.SMTPConnectError as e:
+            logger.error(f"SMTP连接失败: {e} - 请检查服务器和端口")
+            return False
         except Exception as e:
-            logger.error(f"邮件发送失败: {e}")
+            logger.error(f"邮件发送失败: {type(e).__name__}: {e}")
             return False
