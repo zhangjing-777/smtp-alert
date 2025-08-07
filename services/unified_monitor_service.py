@@ -4,6 +4,7 @@
 """
 
 import os
+import time
 import signal
 import psutil
 import subprocess
@@ -103,49 +104,32 @@ class UnifiedMonitorService:
     # 进程管理部分
     # ===================================
     
-    def get_pid(self) -> Optional[int]:
-        """从PID文件获取进程ID"""
-        if os.path.exists(self.pid_file):
-            try:
-                with open(self.pid_file, 'r') as f:
-                    return int(f.read().strip())
-            except (ValueError, IOError):
-                return None
-        return None
-    
-    def is_process_running(self) -> bool:
-        """检查监控进程是否正在运行"""
-        pid = self.get_pid()
-        if pid:
-            return psutil.pid_exists(pid)
-        return False
-    
     def start_process(self) -> Dict[str, Any]:
         """启动监控进程"""
-        # 检查是否已经在运行
-        if self.is_process_running():
-            current_pid = self.get_pid()
+        # 先检查是否已有monitor.py在运行
+        existing_pids = self._get_all_monitor_pids()
+        if existing_pids:
             return {
                 "success": False,
-                "message": f"监控进程已在运行中，PID: {current_pid}",
-                "pid": current_pid,
+                "message": f"监控进程已在运行中, PID: {existing_pids}",
+                "pids": existing_pids,
                 "status": "already_running"
             }
         
         try:
-            # 启动监控进程
+            # 启动新的监控进程
             process = subprocess.Popen(
                 ["python", self.monitor_script],
                 stdout=open(self.log_file, 'a'),
                 stderr=subprocess.STDOUT,
-                preexec_fn=os.setsid if os.name != 'nt' else None  # Windows兼容
+                preexec_fn=os.setsid if os.name != 'nt' else None
             )
             
             # 保存PID到文件
             with open(self.pid_file, 'w') as f:
                 f.write(str(process.pid))
             
-            logger.info(f"监控进程启动成功，PID: {process.pid}")
+            logger.info(f"监控进程启动成功, PID: {process.pid}")
             
             return {
                 "success": True,
@@ -162,103 +146,166 @@ class UnifiedMonitorService:
                 "message": f"启动失败: {str(e)}",
                 "status": "start_failed"
             }
-    
+
     def stop_process(self) -> Dict[str, Any]:
         """停止监控进程"""
-        if not self.is_process_running():
+        # 获取所有monitor.py进程
+        all_pids = self._get_all_monitor_pids()
+        
+        if not all_pids:
             return {
                 "success": False,
                 "message": "监控进程未运行",
                 "status": "not_running"
             }
         
+        stopped_pids = []
+        failed_pids = []
+        
         try:
-            pid = self.get_pid()
-            if pid:
-                # 优雅停止进程
+            # 方法1: 使用pkill命令（最直接）
+            try:
+                result = subprocess.run(['pkill', '-f', 'monitor.py'], 
+                                    capture_output=True, timeout=5)
+                if result.returncode == 0:
+                    logger.info("使用 pkill 成功停止 monitor.py 进程")
+                time.sleep(2)  # 等待进程完全停止
+            except Exception as e:
+                logger.warning(f"pkill 执行失败: {e}")
+            
+            # 方法2: 逐个停止剩余进程
+            remaining_pids = self._get_all_monitor_pids()
+            for pid in remaining_pids:
                 try:
-                    # 首先尝试SIGTERM
-                    if os.name != 'nt':  # Unix/Linux
-                        os.kill(pid, signal.SIGTERM)
-                    else:  # Windows
-                        os.kill(pid, signal.SIGTERM)
+                    # 优雅停止
+                    os.kill(pid, signal.SIGTERM)
                     
                     # 等待进程结束
-                    import time
-                    for _ in range(10):  # 等待最多10秒
+                    for _ in range(5):
                         if not psutil.pid_exists(pid):
+                            stopped_pids.append(pid)
                             break
                         time.sleep(1)
-                    
-                    # 如果还在运行，强制杀死
-                    if psutil.pid_exists(pid):
-                        if os.name != 'nt':
+                    else:
+                        # 强制停止
+                        if psutil.pid_exists(pid):
                             os.kill(pid, signal.SIGKILL)
-                        else:
-                            os.kill(pid, signal.SIGTERM)
-                        logger.warning(f"强制终止监控进程 PID: {pid}")
+                            stopped_pids.append(pid)
+                            logger.warning(f"强制终止进程 PID: {pid}")
                     
                 except ProcessLookupError:
-                    pass  # 进程已经不存在
-                
-                # 清理PID文件
-                if os.path.exists(self.pid_file):
-                    os.remove(self.pid_file)
-                
-                logger.info(f"监控进程停止成功，PID: {pid}")
-                
+                    stopped_pids.append(pid)  # 进程已不存在
+                except Exception as e:
+                    logger.error(f"停止进程 {pid} 失败: {e}")
+                    failed_pids.append(pid)
+            
+            # 清理PID文件
+            if os.path.exists(self.pid_file):
+                os.remove(self.pid_file)
+            
+            # 验证是否全部停止
+            final_check = self._get_all_monitor_pids()
+            
+            if not final_check:
+                logger.info(f"监控进程停止成功, 已停止PID: {stopped_pids}")
                 return {
                     "success": True,
                     "message": "监控进程停止成功",
-                    "pid": pid,
+                    "stopped_pids": stopped_pids,
                     "status": "stopped",
                     "stop_time": datetime.now().isoformat()
                 }
-            
+            else:
+                return {
+                    "success": False,
+                    "message": f"部分进程停止失败, 剩余PID: {final_check}",
+                    "stopped_pids": stopped_pids,
+                    "failed_pids": final_check,
+                    "status": "partial_stopped"
+                }
+                
         except Exception as e:
             logger.error(f"停止监控进程失败: {e}")
             return {
                 "success": False,
                 "message": f"停止失败: {str(e)}",
+                "stopped_pids": stopped_pids,
+                "failed_pids": failed_pids,
                 "status": "stop_failed"
             }
-    
+
     def restart_process(self) -> Dict[str, Any]:
         """重启监控进程"""
-        # 先停止
+        logger.info("开始重启监控进程...")
+        
+        # 先停止所有进程
         stop_result = self.stop_process()
         
-        # 等待一下确保进程完全停止
-        import time
-        time.sleep(2)
+        # 等待确保进程完全停止
+        time.sleep(3)
         
-        # 再启动
+        # 再次检查是否还有残留进程
+        remaining_pids = self._get_all_monitor_pids()
+        if remaining_pids:
+            logger.warning(f"发现残留进程: {remaining_pids}，尝试强制清理")
+            for pid in remaining_pids:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except:
+                    pass
+            time.sleep(2)
+        
+        # 启动新进程
         start_result = self.start_process()
         
+        success = stop_result.get("success", False) and start_result.get("success", False)
+        
         return {
-            "success": start_result["success"],
-            "message": f"重启操作: 停止{'成功' if stop_result['success'] else '失败'}, 启动{'成功' if start_result['success'] else '失败'}",
+            "success": success,
+            "message": f"重启{'成功' if success else '失败'}: 停止-{'成功' if stop_result.get('success') else '失败'}, 启动-{'成功' if start_result.get('success') else '失败'}",
             "stop_result": stop_result,
             "start_result": start_result,
-            "status": "restarted" if start_result["success"] else "restart_failed"
+            "status": "restarted" if success else "restart_failed"
         }
-    
+
+    def _get_all_monitor_pids(self) -> list:
+        """获取所有monitor.py进程的PID"""
+        pids = []
+        try:
+            for proc in psutil.process_iter(['pid', 'cmdline']):
+                try:
+                    cmdline = proc.info['cmdline']
+                    if cmdline and any('monitor.py' in cmd for cmd in cmdline):
+                        pids.append(proc.info['pid'])
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except Exception as e:
+            logger.error(f"获取进程列表失败: {e}")
+        
+        return pids
+
+    def is_process_running(self) -> bool:
+        """检查监控进程是否正在运行"""
+        return len(self._get_all_monitor_pids()) > 0
+
     def get_process_status(self) -> Dict[str, Any]:
         """获取监控进程状态"""
-        pid = self.get_pid()
-        is_running = self.is_process_running()
+        all_pids = self._get_all_monitor_pids()
         
         status_info = {
-            "is_running": is_running,
-            "pid": pid,
-            "status": "running" if is_running else "stopped",
+            "is_running": len(all_pids) > 0,
+            "pids": all_pids,
+            "status": "running" if all_pids else "stopped",
             "check_time": datetime.now().isoformat()
         }
         
-        if is_running and pid:
+        if all_pids:
             try:
-                process = psutil.Process(pid)
+                # 获取第一个进程的详细信息
+                main_pid = all_pids[0]
+                process = psutil.Process(main_pid)
                 status_info.update({
+                    "main_pid": main_pid,
                     "start_time": datetime.fromtimestamp(process.create_time()).isoformat(),
                     "cpu_percent": process.cpu_percent(),
                     "memory_info": {
@@ -271,11 +318,8 @@ class UnifiedMonitorService:
                 status_info.update({
                     "is_running": False,
                     "status": "process_not_found",
-                    "message": "PID文件存在但进程不存在"
+                    "message": "进程信息获取失败，可能已停止"
                 })
-                # 清理无效的PID文件
-                if os.path.exists(self.pid_file):
-                    os.remove(self.pid_file)
         
         return status_info
     
