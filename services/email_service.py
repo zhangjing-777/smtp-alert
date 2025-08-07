@@ -15,14 +15,14 @@ class EmailService:
         """发送审计结果告警邮件"""
         record_id, verdict, created_at, url, reason = record
         
-        subject = f"【审计告警】发现{verdict}的审计记录 - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        subject = f"【CDS网站内容检测中心告警】发现{verdict}的审计记录 - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         
         html_content = f"""
         <html>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <div style="max-width: 600px; margin: 0 auto;">
                 <h2 style="color: {'#d32f2f' if verdict == '不合格' else '#ff9800'};">
-                    🚨 审计结果告警通知
+                    🚨 CDS网站内容检测中心告警通知
                 </h2>
                 
                 <div style="background-color: #f5f5f5; padding: 15px; border-left: 4px solid {'#d32f2f' if verdict == '不合格' else '#ff9800'};">
@@ -37,7 +37,7 @@ class EmailService:
                 </div>
                 
                 <div style="margin-top: 20px; font-size: 12px; color: #666;">
-                    <p>此邮件由审计告警系统自动发送，请勿回复。</p>
+                    <p>此邮件由CDS网站内容检测中心告警系统自动发送，请勿回复。</p>
                     <p>发送时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
                 </div>
             </div>
@@ -48,17 +48,17 @@ class EmailService:
         return self._send_email(subject, html_content, recipients)
     
     def send_image_alert(self, record, recipients):
-        """发送图像审计告警邮件"""
+        """发送屏幕终端内容防护中心告警邮件"""
         record_id, audit_result, created_at, ip_address, mac_address, reasons = record
         
-        subject = f"【图像审计告警】发现{audit_result}的图像审计记录 - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        subject = f"【屏幕终端内容防护中心告警】发现{audit_result}的图像审计记录 - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         
         html_content = f"""
         <html>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <div style="max-width: 600px; margin: 0 auto;">
                 <h2 style="color: {'#d32f2f' if audit_result == '不合格' else '#ff9800'};">
-                    🖼️ 图像审计告警通知
+                    🖼️ 屏幕终端内容防护中心告警通知
                 </h2>
                 
                 <div style="background-color: #f5f5f5; padding: 15px; border-left: 4px solid {'#d32f2f' if audit_result == '不合格' else '#ff9800'};">
@@ -74,7 +74,7 @@ class EmailService:
                 </div>
                 
                 <div style="margin-top: 20px; font-size: 12px; color: #666;">
-                    <p>此邮件由图像审计告警系统自动发送，请勿回复。</p>
+                    <p>此邮件由屏幕终端内容防护中心告警系统自动发送，请勿回复。</p>
                     <p>发送时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
                 </div>
             </div>
